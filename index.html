@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Document Viewer</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+    <style>
+        body { font-family: Arial, sans-serif; display: flex; gap: 20px; }
+        #controls { flex: 1; }
+        #doc-list { width: 250px; height: 400px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; }
+        .doc-item { padding: 5px; border: 1px solid #aaa; margin: 5px 0; cursor: pointer; background: #f9f9f9; }
+        .doc-item.selected { background: #b3d9ff; }
+        #workspace { flex: 3; height: 400px; border: 1px solid #ccc; position: relative; padding: 10px; overflow: auto; }
+        .doc-content { position: absolute; min-width: 250px; background: white; border: 1px solid black; padding: 10px; cursor: move; }
+        .close-btn { color: red; cursor: pointer; font-weight: bold; float: right; }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <h2>Upload Folder</h2>
+        <input type="file" id="folder-input" webkitdirectory directory multiple>
+        <h3>Documents</h3>
+        <div id="doc-list"></div>
+    </div>
+
+    <div id="workspace"><h3>Workspace</h3></div>
+
+    <script>
+        let documents = [];
+        let selectedDocs = [];
+
+        // Handle file uploads and maintain proper order
+        document.getElementById('folder-input').addEventListener('change', function(event) {
+            const files = Array.from(event.target.files);
+            documents = [];
+            let processedFiles = 0;
+            
+            // Sort files alphabetically by name to maintain correct order
+            files.sort((a, b) => a.name.localeCompare(b.name));
+
+            files.forEach(file => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    documents.push({ id: file.name, content: e.target.result });
+                    processedFiles++;
+
+                    if (processedFiles === files.length) {
+                        renderDocumentList();
+                    }
+                };
+                reader.readAsText(file);
+            });
+        });
+
+        // Render document list dynamically
+        function renderDocumentList() {
+            d3.select("#doc-list").html("");
+
+            d3.select("#doc-list").selectAll(".doc-item")
+                .data(documents, d => d.id)
+                .enter()
+                .append("div")
+                .attr("class", "doc-item")
+                .text(d => d.id)
+                .on("click", function(event, d) { 
+                    handleSelection(event, d);
+                });
+
+            // Enable reordering via drag-and-drop
+            $("#doc-list").sortable({ update: updateDocumentOrder });
+        }
+
+        // Update document order after sorting
+        function updateDocumentOrder() {
+            const newOrder = $(".doc-item").map(function() { return $(this).text(); }).get();
+            documents = newOrder.map(id => documents.find(doc => doc.id === id));
+        }
+
+        // Handle selection of documents
+        function handleSelection(event, doc) {
+            if (event.ctrlKey || event.metaKey) {
+                const element = d3.select(event.target);
+                const isSelected = element.classed("selected");
+
+                if (isSelected) {
+                    element.classed("selected", false);
+                    selectedDocs = selectedDocs.filter(d => d.id !== doc.id);
+                } else {
+                    element.classed("selected", true);
+                    selectedDocs.push(doc);
+                }
+            } else {
+                d3.selectAll(".doc-item").classed("selected", false);
+                d3.select(event.target).classed("selected", true);
+                selectedDocs = [doc];
+            }
+
+            selectedDocs.forEach(openDocument);
+        }
+
+        // Open document in workspace
+        function openDocument(doc) {
+            const workspace = d3.select("#workspace");
+            const safeId = doc.id.replace(/[^a-zA-Z0-9]/g, "_");
+
+            if (!workspace.select(`#${safeId}`).empty()) {
+                return;
+            }
+
+            const docDiv = workspace.append("div")
+                .attr("class", "doc-content")
+                .attr("id", safeId)
+                .html(`<span class="close-btn" onclick="closeDocument('${safeId}')">X</span>
+                       <strong>${doc.id}</strong><br>${doc.content}`)
+                .style("top", "10px")
+                .style("left", "10px");
+
+            $(docDiv.node()).draggable();
+        }
+
+        // Close document
+        function closeDocument(docId) {
+            d3.select(`#${docId}`).remove();
+        }
+    </script>
+</body>
+</html>
